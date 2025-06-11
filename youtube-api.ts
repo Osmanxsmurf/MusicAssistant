@@ -1,5 +1,5 @@
 // YouTube API anahtarını ortam değişkeninden alıyoruz
-const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || 'AIzaSyAzqsXjoQCFDi5c5Lf6Ilp9det-5lS5QCg';
+const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || 
 const API_URL = 'https://www.googleapis.com/youtube/v3';
 
 export interface YoutubeSearchResult {
