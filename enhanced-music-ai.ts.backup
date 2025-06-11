@@ -1,0 +1,1211 @@
+/**
+ * MüzikBeyin - Ultra Gelişmiş Müzik Yapay Zekası
+ * 
+ * Bu modül, kullanıcıların müzik tercihlerini analiz ederek kişiselleştirilmiş 
+ * öneriler oluşturan ileri seviye bir yapay zeka sistemidir. Kullanıcının dinleme 
+ * geçmişinden, arama sorgularından ve açık geri bildirimlerinden öğrenir.
+ * 
+ * Yetenekler:
+ * - Müzik analizi ve tanıma
+ * - Duygu temelli müzik eşleştirme
+ * - Gerçek zamanlı kullanıcı davranış analizi
+ * - Doğal dil işleme ile sorgu anlama
+ * - Öğrenme ve kişiselleştirme
+ * - Çapraz tür öneri algoritmaları
+ * - Sosyal öğrenme ve grup dinamikleri
+ * - Bağlam farkındalığı (zaman, yer, aktivite)
+ */
+
+// Temel kütüphaneler
+import { getXataClient } from '../xata';
+import { UserProfile, UserPreferences, ListeningHistoryItem } from './user/user-profile';
+import { RecommendationParameters } from './types/recommendation-types';
+import { Song } from '../types/music-types';
+
+/**
+ * Öğrenme sonuçları arayüzü - kullanıcıların davranışlarından elde edilen öğrenme sonucu
+ */
+export interface LearningResult {
+  genre?: Record<string, number>;
+  mood?: Record<string, number>;
+  artists?: Record<string, number>;
+  features?: Record<string, number>;
+  lyrics?: Record<string, number>;
+  instruments?: Record<string, number>;
+  eras?: Record<string, number>;
+  listening_patterns?: {
+    time_of_day?: Record<string, number>; // Günün hangi saatlerinde dinliyor
+    day_of_week?: Record<string, number>; // Haftanın hangi günleri dinliyor
+    duration?: Record<string, number>;    // Dinleme süreleri (kısa/uzun)
+    repeat_behavior?: Record<string, number>; // Tekrar dinleme davranışı
+  };
+}
+
+/**
+ * Müzik asistanı için kullanıcı etkileşim tipi
+ */
+export interface UserInteraction {
+  type: 'play' | 'search' | 'like' | 'dislike' | 'skip' | 'complete' | 'recommend' | 'query';
+  songId?: string;
+  songDetails?: Song;
+  timestamp: number | Date; // Hem sayı hem de Date objesi olabilir
+  query?: string;
+  duration?: number;
+  successful?: boolean;
+  feedback?: string;
+  rating?: number; // 1-5 arası değerlendirme
+  addedToPlaylist?: boolean;
+  sharedWithOthers?: boolean;
+  details?: Record<string, any>; // Esnek ilave detaylar 
+  explicitFeedback?: {
+    type?: string;
+    value?: string;
+  };
+}
+
+/**
+ * Haftalık özet dönüş tipi
+ */
+export interface WeeklySummary {
+  topArtists: string[];
+  topGenres: string[];
+  dominantMood: string;
+  recommendedSongs: Song[];
+}
+
+// Alt modüller ve işlemciler
+import { NLPProcessor } from './nlp/nlp-processor';
+import { MusicAnalyzer } from './music/music-analyzer';
+import { EmotionDetector } from './emotion/emotion-detector';
+import { ContextManager } from './context/context-manager';
+import { MusicRecommender } from './recommender/music-recommender';
+import { LearningEngine } from './learning/learning-engine';
+
+// LearningResult ve UserBehaviorData tiplerini doğrudan learning-engine.ts'ten import etmiyoruz
+// çünkü döngüsel bağımlılık olmaması için bunlar orada da tanımlanmış durumda
+
+// Dışa aktarılacak türler
+export type { UserProfile, UserPreferences, ListeningHistoryItem };
+
+// Song tipi artık ../types/music-types'ten import ediliyor
+
+// Dış kütüphaneler için tip tanımlamaları
+declare module 'compromise' {
+  export function compromise(text: string): any;
+}
+
+declare module 'sentiment' {
+  export function analyze(text: string, options?: any): any;
+}
+
+// Yardımcı türler ve arayüzler
+// LearningResult tipi artık learning-engine.ts'den import ediliyor
+
+/**
+ * Bağlam bilgisi arayüzü - müzik dinleme sırasında mevcut ortam bilgisi
+ */
+export interface ContextInfo {
+  timeOfDay?: string;          // Günün saati (sabah, öğlen, akşam, gece)
+  dayOfWeek?: number;          // Haftanın günü (0-6)
+  season?: string;             // Mevsim
+  location?: string;           // Konum tipi (ev, iş, araba, spor vb.)
+  activity?: string;           // Aktivite (spor, çalışma, dinlenme vb.)
+  weather?: string;            // Hava durumu (yağmurlu, güneşli vb.)
+  recentSongs?: Song[];        // Son dinlenen şarkılar
+  mood?: string;               // Kullanıcının ruh hali
+  companionship?: string;      // Yalnız mı yoksa başkalarıyla mı
+  device?: string;             // Hangi cihazda dinleniyor
+  audioQuality?: string;       // Ses kalitesi (normal, yüksek kalite vb.)
+  previousActivity?: string;   // Önceki aktivite
+  nextPlannedActivity?: string; // Sonraki planlanan aktivite
+  energyLevel?: number;        // Enerji seviyesi (1-10)
+}
+
+/**
+ * Kullanıcı davranış verisi arayüzü - bir şarkı dinleme eylemi sırasında toplanan veri
+ */
+export interface UserBehaviorData {
+  songId: string;              // Dinlenen şarkının kimliği
+  listenDuration: number;      // Dinleme süresi (saniye)
+  completed: boolean;          // Şarkı sonuna kadar dinlendi mi
+  skipped: boolean;            // Şarkı atlandı mı
+  timestamp: Date;             // Dinleme zamanı
+  rating?: number;             // Kullanıcı değerlendirmesi (1-5)
+  contextInfo?: ContextInfo;    // Dinleme bağlam bilgisi
+  repeatCount?: number;        // Kaç kez tekrar dinlendi
+  volumeLevel?: number;        // Ses düzeyi (0-100)
+  addedToPlaylist?: boolean;   // Çalma listesine eklendi mi
+  sharedWithOthers?: boolean;  // Başkalarıyla paylaşıldı mı
+  explicitFeedback?: {         // Açık geri bildirim
+    type?: string;              // Geri bildirim türü
+    value?: string;             // Geri bildirim değeri
+    isPositive?: boolean;       // Olumlu mu
+  };
+  seekBehavior?: {             // Şarkı içinde gezinme davranışı
+    seekCount?: number;         // Gezinme sayısı
+    seekPositions?: number[];   // Gezinme pozisyonları (saniye)
+  };
+  followUpAction?: string;     // Dinlemeden sonraki eylem
+}
+
+/**
+ * Müzik özellikleri arayüzü - bir şarkının teknik ve duygusal özellikleri
+ */
+export interface MusicFeatures {
+  tempo: number;              // BPM olarak tempo
+  energy: number;             // Enerji seviyesi (0-1)
+  valence: number;            // Pozitiflik seviyesi (0-1)
+  danceability: number;       // Dans edilebilirlik (0-1)
+  instrumentalness: number;   // Ensürümantal olma derecesi (0-1)
+  acousticness: number;       // Aküstik olma derecesi (0-1)
+  liveness: number;           // Canlı performans hissi (0-1)
+  speechiness: number;        // Konuşma içerme oranı (0-1)
+  key?: number;               // Anahtar (0-11, C=0, C#=1 vb.)
+  mode?: number;              // Mod (0 = minör, 1 = majör)
+  timeSignature?: number;     // Zaman işareti (3/4, 4/4 vb.)
+  loudness?: number;          // Yüksek ses seviyesi (dB)
+}
+
+/**
+ * Duygu analizi sonuç arayüzü
+ */
+export interface EmotionAnalysisResult {
+  dominantEmotion: string;     // Baskın duygu
+  emotionScores: {            // Duygu puanları
+    happiness: number;         // Mutluluk (0-1)
+    sadness: number;           // Üzüntü (0-1)
+    anger: number;             // Öfke (0-1)
+    fear: number;              // Korku (0-1)
+    surprise: number;          // Şaşkınlık (0-1)
+    disgust: number;           // Tiksinti (0-1)
+    neutral: number;           // Nötr (0-1)
+  };
+  intensity: number;           // Duygu yoğunluğu (0-1)
+  complexity: number;          // Duygusal karmaşıklık (0-1)
+  sentiment: number;           // Genel duygu değeri (-1 ila 1)
+}
+
+/**
+ * Dil çözümleme sonuç arayüzü
+ */
+export interface LanguageProcessingResult {
+  intent: string;             // Niyet ("müzik-öner", "bilgi-iste" vb.)
+  entities: {                 // Varlıklar
+    artists: string[];        // Sanatçılar
+    genres: string[];         // Türler
+    songs: string[];          // Şarkılar
+    moods: string[];          // Ruh halleri
+    timeframe: string;        // Zaman dilimi
+    quantity: number;         // Miktar
+    other: Record<string, any>; // Diğer varlıklar
+  };
+  sentiment: number;          // Duygu değeri (-1 ila 1)
+  complexity: number;         // Dilsel karmaşıklık (0-1)
+  keywords: string[];         // Anahtar kelimeler
+  languageDetected: string;      // Tespit edilen dil
+}
+
+/**
+ * Haftalık özet için kullanılan karşılaştırma bilgileri
+ */
+export interface WeeklyComparisonData {
+  newDiscoveries: Song[];        // Yeni keşifler
+  insightText: string;           // Özet için metin
+  comparedToPrevious: {        // Önceki haftaya göre değişim
+    listeningTime: number;      // Dinleme süresi değişimi (yüzde)
+    moodShift: boolean;         // Ruh hali değişimi
+    genreExploration: number;   // Tür keşif oranı
+    artistDiversity: number;    // Sanatçı çeşitliliği değişimi
+  };
+}
+
+/**
+ * Sorgu analizi sonuç arayüzü - kullanıcı sorgusunun analiz edilmiş hali
+ */
+export interface QueryAnalysisResult {
+  intent: string;                // Amaç (search, recommend, play vb.)
+  entities: {                    // Varlıklar
+    artists?: string[];          // Sanatçılar
+    genres?: string[];           // Türler
+    moods?: string[];            // Ruh halleri
+    eras?: string[];             // Dönemler
+    lyrics?: string[];           // Söz anahtar kelimeleri
+    tempo?: string;              // Tempo (hızlı, yavaş vb.)
+    instruments?: string[];      // Çalgılar
+    occasions?: string[];        // Vesileler (parti, düğün vb.)
+    languages?: string[];        // Diller
+    locations?: string[];        // Yerler
+  };
+  filters: {                     // Filtreler
+    minYear?: number;            // Minimum yıl
+    maxYear?: number;            // Maksimum yıl
+    excludeArtists?: string[];   // Hariç tutulacak sanatçılar
+    excludeGenres?: string[];    // Hariç tutulacak türler
+  };
+  sortBy?: string;               // Sıralama kriteri
+  limit?: number;                // Sonuç limiti
+  emotionalContext?: EmotionAnalysisResult; // Duygusal bağlam
+  rawText: string;               // Ham metin
+  confidence: number;            // Güven seviyesi (0-1)
+  languageDetected: string;      // Tespit edilen dil
+}
+
+// WeeklyComparisonData tanımı yukarıda yapıldı
+
+/**
+ * Haftalık özet dönüş tipi
+ */
+export interface WeeklySummary {
+  topArtists: string[];
+  topGenres: string[];
+  dominantMood: string;
+  recommendedSongs: Song[];
+}
+
+// UserProfile, UserPreferences, ListeningHistoryItem ve UserInteraction 
+// artık ./user/user-profile modülünden import edildiği için burada yeniden tanımlamaya gerek yok
+
+/**
+ * Ana yapay zeka sınıfı - Müzik asistanı yapısının beyni
+ */
+export class EnhancedMusicAI {
+  // Özel özellikler
+  private readonly userProfileCache: Map<string, UserProfile> = new Map();
+  private nlpProcessor: NLPProcessor;
+  private musicAnalyzer: MusicAnalyzer;
+  private emotionDetector: EmotionDetector;
+  private contextManager: ContextManager;
+  private recommender: MusicRecommender;
+  private learningEngine: LearningEngine;
+  
+  // Not: Aşağıdaki etiketler daha sonra kullanılmak üzere saklanmıştır.
+  // Şu an için aktif olarak kullanılmamaktadır, ancak önerici algoritmalarda referans olarak kullanılabilir.
+  
+  /*
+  // Türkçe Müzik Türleri
+  [{ id: 'pop', label: 'Pop' }, { id: 'rock', label: 'Rock' }, ...]
+  
+  // Ruh Hali Etiketleri
+  [{ id: 'mutlu', label: 'Mutlu' }, { id: 'huzunlu', label: 'Hüzünlü' }, ...]
+  
+  // Dönem Etiketleri
+  [{ id: '60lar', label: '60\'lar' }, { id: '70ler', label: '70\'ler' }, ...]
+  
+  // Bölgesel Etiketler
+  [{ id: 'turkiye', label: 'Türkiye' }, { id: 'karadeniz', label: 'Karadeniz' }, ...]
+  */
+  
+  /**
+   * Yapılandırıcı - tüm alt sistemleri başlat
+   */
+  constructor() {
+    // Alt sistemleri başlat
+    this.nlpProcessor = new NLPProcessor();
+    this.musicAnalyzer = new MusicAnalyzer();
+    this.emotionDetector = new EmotionDetector();
+    this.contextManager = new ContextManager();
+    this.recommender = new MusicRecommender();
+    this.learningEngine = new LearningEngine();
+    
+    // Alışma verilerini yükle
+    this.preloadData();
+    
+    console.log('MüzikBeyin Ultra Gelişmiş Yapay Zeka başlatıldı!');
+  }
+  
+  /**
+   * Ön yükleme işlemleri
+   */
+  private async preloadData(): Promise<void> {
+    try {
+      // Örnek verileri yükle
+      console.log('Ön yükleme tamamlandı.');
+    } catch (error) {
+      console.error('Ön yükleme sırasında hata:', error);
+    }
+  }
+  
+
+  
+  /**
+   * Gets the user profile from cache or loads it from the database
+   * @param userId User ID
+   */
+  private async getUserProfile(userId: string): Promise<UserProfile> {
+    // Check if we have the profile in cache
+    if (this.userProfileCache.has(userId)) {
+      return this.userProfileCache.get(userId)!;
+    }
+    
+    try {
+      // UserProfile sınıfının yapılandırıcısına user ID ile çağrı yaparak yeni profil oluştur
+      const profile = new UserProfile(userId);
+      
+      // Bu örnekte, UserProfile sınıfının load metodu bir promise döndürüyor olabilir
+      // Veya UserProfile constructor'da otomatik yükleme yapıyor olabilir
+      
+      // Cache the profile
+      this.userProfileCache.set(userId, profile);
+      
+      return profile;
+    } catch (error) {
+      console.error(`Error creating/loading user profile for user ${userId}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Saves the user profile to the database
+   * @param userProfile User profile to save
+   */
+  async saveUserProfile(userProfile: UserProfile): Promise<boolean> {
+    try {
+      // Use the UserProfile's save method
+      const success = await userProfile.save();
+      
+      // Update the cache if successful
+      if (success) {
+        this.userProfileCache.set(userProfile.userId, userProfile);
+      }
+      
+      return success;
+    } catch (error) {
+      console.error(`Error saving user profile for user ${userProfile.userId}:`, error);
+      return false;
+    }
+  }
+  
+  /**
+   * Learns from user behavior and updates their profile
+   * @param userId User ID
+   * @param behaviorData User behavior data including song interactions
+   */
+  async learnFromUserBehavior(userId: string, behaviorData: UserBehaviorData): Promise<boolean> {
+    try {
+      if (!userId || !behaviorData || !behaviorData.songId) {
+        console.error('Geçersiz kullanıcı ID veya davranış verisi');
+        return false;
+      }
+
+      // Get the user profile
+      const userProfile = await this.getUserProfile(userId);
+      
+      // Get the song details from database
+      const xata = getXataClient();
+      // Use all_songs_clean instead of songs, based on the xata.ts implementation
+      const song = await xata.db.all_songs_clean.filter({ id: behaviorData.songId }).getFirst();
+      
+      if (!song) {
+        console.error(`Song with ID ${behaviorData.songId} not found`);
+        return false;
+      }
+      
+      // Process the user's behavior with this song
+      const learningResult: LearningResult = {
+        genre: {},
+        mood: {},
+        artists: {}
+      };
+      
+      // Calculate a score based on user behavior
+      let score = 0;
+      
+      // If the song was completed, that's a positive signal
+      if (behaviorData.completed) {
+        score += 1;
+      }
+      
+      // If the song was skipped, that's a negative signal
+      if (behaviorData.skipped) {
+        score -= 2;
+      }
+      
+      // If the user rated the song, use that as a strong signal
+      if (behaviorData.rating !== undefined) {
+        // Convert 1-5 rating to a -2 to +2 score
+        score += (behaviorData.rating - 3);
+      }
+      
+      // Listen duration is a positive signal if the song was listened to for more than 30 seconds
+      if (behaviorData.listenDuration > 30 && !behaviorData.skipped) {
+        score += 0.5;
+      }
+      
+      // Apply the score to the song's genres
+      if (song.genre && Array.isArray(song.genre)) {
+        song.genre.forEach((genre: string) => {
+          if (learningResult.genre) {
+            learningResult.genre[genre] = score;
+          }
+        });
+      }
+      
+      // Apply the score to the song's moods
+      if (song.mood && Array.isArray(song.mood)) {
+        song.mood.forEach((mood: string) => {
+          if (learningResult.mood) {
+            learningResult.mood[mood] = score;
+          }
+        });
+      }
+      
+      // Apply the score to the artist
+      if (song.artist && learningResult.artists) {
+        learningResult.artists[song.artist] = score;
+      }
+      
+      // Record this interaction in the user profile
+      if (typeof userProfile.addListeningHistoryItem === 'function') {
+        userProfile.addListeningHistoryItem({
+          songId: behaviorData.songId,
+          timestamp: behaviorData.timestamp,
+          listenDuration: behaviorData.listenDuration,
+          completed: behaviorData.completed,
+          skipped: behaviorData.skipped,
+          rating: behaviorData.rating
+        });
+      }
+      
+      // Record context-based interaction if context is provided
+      if (behaviorData.contextInfo && typeof userProfile.addInteraction === 'function') {
+        userProfile.addInteraction({
+          type: 'play',
+          timestamp: behaviorData.timestamp,
+          details: {
+            songId: behaviorData.songId,
+            contextInfo: behaviorData.contextInfo
+          }
+        });
+      }
+      
+      // Apply the learning results
+      return await this.applyLearningResults(userId, learningResult);
+    } catch (error) {
+      console.error(`Error learning from user behavior for user ${userId}:`, error);
+      return false;
+    }
+  }
+  
+  /**
+   * Apply learning results to update user preferences
+   */
+  async applyLearningResults(userId: string, learningResults: LearningResult): Promise<boolean> {
+    if (!userId || !learningResults) {
+      console.error('applyLearningResults: Geçersiz parametreler', { userId, learningResults });
+      return false;
+    }
+
+    try {
+      // Get user profile
+      const userProfile = await this.getUserProfile(userId);
+      
+      // Kullanıcı tercihleri yoksa başlatma yap
+      if (!userProfile.preferences) {
+        userProfile.preferences = {
+          favoriteGenres: [],
+          favoriteMoods: [],
+          favoriteArtists: [],
+          dislikedGenres: [],
+          dislikedArtists: [],
+          listeningFrequency: 3,
+          preferredLanguages: ['tr']
+        };
+      }
+
+      // Array özelliklerinin tanımlı olduğundan emin ol
+      if (!Array.isArray(userProfile.preferences.favoriteGenres)) userProfile.preferences.favoriteGenres = [];
+      if (!Array.isArray(userProfile.preferences.favoriteMoods)) userProfile.preferences.favoriteMoods = [];
+      if (!Array.isArray(userProfile.preferences.favoriteArtists)) userProfile.preferences.favoriteArtists = [];
+      if (!Array.isArray(userProfile.preferences.dislikedGenres)) userProfile.preferences.dislikedGenres = [];
+      if (!Array.isArray(userProfile.preferences.dislikedArtists)) userProfile.preferences.dislikedArtists = [];
+      
+      // Update genre preferences
+      if (learningResults.genre && typeof learningResults.genre === 'object') {
+        for (const [genre, score] of Object.entries(learningResults.genre)) {
+          if (typeof score === 'number') {
+            if (score > 0 && !userProfile.preferences.favoriteGenres.includes(genre)) {
+              userProfile.preferences.favoriteGenres.push(genre);
+              // Keep the list manageable
+              if (userProfile.preferences.favoriteGenres.length > 20) {
+                userProfile.preferences.favoriteGenres = userProfile.preferences.favoriteGenres.slice(-20);
+              }
+            } else if (score < 0 && !userProfile.preferences.dislikedGenres.includes(genre)) {
+              userProfile.preferences.dislikedGenres.push(genre);
+              // Remove from favorites if present
+              userProfile.preferences.favoriteGenres = userProfile.preferences.favoriteGenres.filter(g => g !== genre);
+              // Keep the list manageable
+              if (userProfile.preferences.dislikedGenres.length > 20) {
+                userProfile.preferences.dislikedGenres = userProfile.preferences.dislikedGenres.slice(-20);
+              }
+            }
+          }
+        }
+      }
+      
+      // Update mood preferences
+      if (learningResults.mood && typeof learningResults.mood === 'object') {
+        for (const [mood, score] of Object.entries(learningResults.mood)) {
+          if (typeof score === 'number' && score > 0 && !userProfile.preferences.favoriteMoods.includes(mood)) {
+            userProfile.preferences.favoriteMoods.push(mood);
+            // Keep the list manageable
+            if (userProfile.preferences.favoriteMoods.length > 10) {
+              userProfile.preferences.favoriteMoods = userProfile.preferences.favoriteMoods.slice(-10);
+            }
+          }
+        }
+      }
+      
+      // Update artist preferences
+      if (learningResults.artists && typeof learningResults.artists === 'object') {
+        for (const [artist, score] of Object.entries(learningResults.artists)) {
+          if (typeof score === 'number') {
+            if (score > 0 && !userProfile.preferences.favoriteArtists.includes(artist)) {
+              userProfile.preferences.favoriteArtists.push(artist);
+              // Keep the list manageable
+              if (userProfile.preferences.favoriteArtists.length > 20) {
+                userProfile.preferences.favoriteArtists = userProfile.preferences.favoriteArtists.slice(-20);
+              }
+            } else if (score < 0 && !userProfile.preferences.dislikedArtists.includes(artist)) {
+              userProfile.preferences.dislikedArtists.push(artist);
+              // Remove from favorites if present
+              userProfile.preferences.favoriteArtists = userProfile.preferences.favoriteArtists.filter(a => a !== artist);
+              // Keep the list manageable
+              if (userProfile.preferences.dislikedArtists.length > 20) {
+                userProfile.preferences.dislikedArtists = userProfile.preferences.dislikedArtists.slice(-20);
+              }
+            }
+          }
+        }
+      }
+      
+      // Save the updated profile
+      return await this.saveUserProfile(userProfile);
+    } catch (error) {
+      console.error(`Error applying learning results for user ${userId}:`, error);
+      return false;
+    }
+  }
+
+    /**
+   * Kullanıcı etkileşimlerini kaydeder
+   * @param userId Kullanıcı ID'si 
+   * @param interaction Etkileşim bilgisi
+   */
+  private async logUserInteraction(userId: string, interaction: UserInteraction): Promise<void> {
+    try {
+      // Kullanıcı etkileşimlerini kaydetmek için bir veritabanı işlemi yapılabilir
+      // Şu anda sadece konsola yazdırıyoruz
+      console.log(`User interaction logged: ${userId}`, interaction);
+      
+      try {
+        // Kullanıcı profilini güncelleme işlemi burada yapılabilir
+        const userProfile = await this.getUserProfile(userId);
+        if (userProfile) {
+          // Profili güncelle ve kaydet
+          await this.saveUserProfile(userProfile);
+        }
+      } catch (profileError: any) {
+        // Profil işlemi sırasında hata olduysa sessizce devam et
+        console.warn(`Could not update user profile for ${userId}:`, profileError);
+      }
+    } catch (error: any) {
+      console.error(`Error logging user interaction for user ${userId}:`, error);
+      // Etkileşim kaydı sırasındaki hatalar kritik değildir, sessizce devam ediyoruz
+    }
+  }
+
+  /**
+   * Kullanıcının haftalık müzik özetini oluşturur
+   * @param userId Kullanıcı ID'si
+   * @returns Haftalık özet bilgileri (en çok dinlenen sanatçılar, türler, baskın ruh hali ve önerilen şarkılar)
+   */
+  async generateWeeklySummary(userId: string): Promise<WeeklySummary> {
+    try {
+      // Kullanıcı profilini getir
+      const userProfile = await this.getUserProfile(userId);
+      
+      // Son bir haftalık dinleme verilerini analiz et
+      // UserProfile'dan dinleme geçmişini al veya boş dizi kullan
+      let listeningHistory: any[] = [];
+      
+      // Eğer kullanıcı profilinde getListeningHistory metodu varsa kullan
+      if (userProfile && typeof userProfile.getListeningHistory === 'function') {
+        try {
+          listeningHistory = await userProfile.getListeningHistory() || [];
+        } catch (e) {
+          console.error('Dinleme geçmişi alınamadı:', e);
+          // Devam et, boş liste kullan
+        }
+      }
+      
+      // Dinleme geçmişini tarih filtresine göre filtrele
+      const now = new Date();
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      
+      const lastWeekListening = listeningHistory.filter((item: any) => {
+        return new Date(item.timestamp) >= oneWeekAgo;
+      });
+      
+      // En çok dinlenen sanatçıları, türleri ve ruh hallerini sayacak nesneler
+      const artistCounts: Record<string, number> = {};
+      const genreCounts: Record<string, number> = {};
+      const moodCounts: Record<string, number> = {};
+      
+      // Dinleme geçmişinden sanatçı ve türleri topla
+      for (const item of lastWeekListening) {
+        try {
+          // Eğer şarkı detayları zaten varsa kullan, yoksa getir
+          let songDetails: any = item.songDetails;
+          
+          if (!songDetails && item.songId && this.musicAnalyzer) {
+            songDetails = await this.musicAnalyzer.getSongDetails(item.songId);
+          }
+          
+          if (songDetails) {
+            // Sanatçı sayacını artır
+            if (songDetails.artist) {
+              artistCounts[songDetails.artist] = (artistCounts[songDetails.artist] || 0) + 1;
+            }
+            
+            // Tür sayacını artır
+            if (songDetails.genre && Array.isArray(songDetails.genre)) {
+              for (const genre of songDetails.genre) {
+                genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+              }
+            }
+            
+            // Ruh hali sayacını artır
+            if (songDetails.mood && Array.isArray(songDetails.mood)) {
+              for (const mood of songDetails.mood) {
+                moodCounts[mood] = (moodCounts[mood] || 0) + 1;
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Dinleme geçmişi işlenirken hata:', e);
+        }
+      }
+      
+      // En çok dinlenen sanatçıları, türleri ve ruh hallerini belirle
+      const topArtists = Object.keys(artistCounts).sort((a, b) => artistCounts[b] - artistCounts[a]).slice(0, 5);
+      const topGenres = Object.keys(genreCounts).sort((a, b) => genreCounts[b] - genreCounts[a]).slice(0, 5);
+      const dominantMood = Object.keys(moodCounts).sort((a, b) => moodCounts[b] - moodCounts[a])[0];
+      
+      // Önerilen şarkıları belirle
+      const recommendedSongs = await this.recommender.getRecommendations(userId, {
+        limit: 10,
+        seedGenres: topGenres,
+        targetMoods: [dominantMood],
+        noveltyFactor: 0.3 // %30 yenilik faktörü
+      });
+      
+      return {
+        topArtists,
+        topGenres,
+        dominantMood,
+        recommendedSongs
+      };
+    } catch (error) {
+      console.error(`Error generating weekly summary for user ${userId}:`, error);
+      return {
+        topArtists: [],
+        topGenres: [],
+        dominantMood: '',
+        recommendedSongs: []
+      };
+    }
+  }
+
+  /**
+   * Kullanıcının sorgusunu işler ve öneriler sunar
+   * @param query Kullanıcı sorgusu
+   * @param userId Kullanıcı ID'si
+   */
+  async processQuery(query: string, userId: string): Promise<{
+    response: string;
+    songs?: Song[];
+    relatedMoods?: string[];
+    categoryFilters?: {
+      genres?: string[];
+      moods?: string[];
+      eras?: string[];
+      regions?: string[];
+    };
+    playableResults?: boolean; // YouTube'da çalınabilir sonuçlar var mı
+  }> {
+    try {
+      if (!query || !userId) {
+        return {
+          response: 'Geçersiz sorgu veya kullanıcı ID.'
+        };
+      }
+
+      // 1. Kullanıcı profilini al
+      let userProfile: UserProfile;
+      try {
+        userProfile = await this.getUserProfile(userId);
+        
+        // Etkileşimi kaydet
+        try {
+          await this.logUserInteraction(userId, {
+            type: 'query',
+            query: query,
+            timestamp: new Date(),
+            successful: true
+          });
+        } catch (e) {
+          console.error('Etkileşim kaydedilemedi', e);
+        }
+      } catch (logError) {
+        console.error('Kullanıcı etkileşimi kaydedilemedi:', logError);
+        // Kritik bir hata değil, devam ediyoruz
+        userProfile = await this.getUserProfile(userId); // Tekrar almayı dene
+      }
+      
+      // 2. Kullanıcının sorgusunu analiz et (NLP)
+      if (!this.nlpProcessor) {
+        throw new Error('NLP işlemcisi başlatılmamış');
+      }
+      const queryAnalysis = await this.nlpProcessor.analyzeQuery(query);
+      
+      // 3. Kullanıcı bağlamını al
+      if (!this.contextManager) {
+        throw new Error('Bağlam yöneticisi başlatılmamış');
+      }
+      // Bağlam bilgisini al (güncelleme sırasında kullanılmıyor, ama ileride kullanılabilir)
+      await this.contextManager.getContext(userId);
+      
+      // 4. Duygu analizi yap
+      if (!this.emotionDetector) {
+        throw new Error('Duygu algılayıcısı başlatılmamış');
+      }
+      const moodAnalysis = await this.emotionDetector.analyzeText(query);
+      const relatedMoods: string[] = [];
+      
+      // Baskın duyguyu ekle
+      if (moodAnalysis && moodAnalysis.dominantEmotion) {
+        relatedMoods.push(moodAnalysis.dominantEmotion);
+      }
+      
+      // Ruh hali puanlarından yüksek olanları ekle (eşik: 0.5)
+      if (moodAnalysis && moodAnalysis.emotionScores) {
+        Object.entries(moodAnalysis.emotionScores).forEach(([emotion, score]) => {
+          if (score > 0.5 && emotion !== moodAnalysis.dominantEmotion) {
+            relatedMoods.push(emotion);
+          }
+        });
+      }
+      
+      // Öneri parametrelerini oluştur
+      const recommendationParams: RecommendationParameters = {
+        userId,
+        limit: 10,
+        seedGenres: queryAnalysis && queryAnalysis.entities && queryAnalysis.entities.genres ? queryAnalysis.entities.genres : [],
+        targetMoods: relatedMoods,
+        noveltyFactor: 0.3 // %30 yenilik faktörü
+      };
+      
+      // Sorgu analizine ve kullanıcı bağlamına göre tavsiye al - gerekli kontroller eklendi
+      if (!this.recommender) {
+        throw new Error('Tavsiye motoru başlatılmamış');
+      }
+      const recommendations = await this.recommender.getRecommendations(userId, recommendationParams);
+      
+      // Kategori filtrelerini hazırla
+      const categoryFilters = {
+        genres: queryAnalysis.entities?.genres || [],
+        moods: relatedMoods,
+        eras: queryAnalysis.entities?.eras || [],
+        regions: queryAnalysis.entities?.locations || []
+      };
+      
+      // Yanıt metni oluştur
+      let responseText = "";
+      
+      // Niyet (intent) bazlı yanıt oluşturma
+      if (queryAnalysis.intent === "recommendation") {
+        if (relatedMoods.length > 0) {
+          responseText = `${relatedMoods.join(", ")} hislerinize uygun şarkılar buldum:`;
+        } else {
+          responseText = "İşte sizin için önerdiğim şarkılar:";
+        }
+      } else if (queryAnalysis.intent === "search") {
+        responseText = "Aramanıza uygun şarkılar buldum:";
+      } else if (queryAnalysis.intent === "information") {
+        responseText = "İşte istediğiniz bilgiler:";
+      } else if (queryAnalysis.intent === "play") {
+        responseText = "Şu şarkıları çalabilirim:";
+      } else {
+        responseText = "Nasıl yardımcı olabilirim? Belirli bir ruh haline göre müzik önerileri için 'enerjik', 'sakin', 'hüzünlü' veya 'mutlu' gibi terimler kullanabilirsiniz.";
+      }
+      
+      // Öğrenme motorunu besle - kullanıcı profilini geliştir
+      try {
+        if (this.learningEngine && userProfile) {
+          await this.learningEngine.learnFromQuery(userProfile, query, recommendations);
+          
+          // Kullanıcı profilini kaydet
+          if (typeof userProfile.save === 'function') {
+            await userProfile.save();
+          }
+        }
+      } catch (learningError) {
+        console.error('Öğrenme işlemi sırasında hata:', learningError);
+      }
+      
+      // Şarkıların oynatılabilir olup olmadığını kontrol et
+      // Bu bilgi UI'da doğrudan oynat butonları göstermek için kullanılacak
+      // YouTube entegrasyonu: Bulunan şarkıların çalınabilir olup olmadığını işaretle
+      const hasPlayableResults = recommendations && recommendations.length > 0;
+      
+      // Kullanıcı etkileşimini kaydet
+      await this.logUserInteraction(userId, {
+        type: 'query',
+        timestamp: new Date(),
+        details: { queryText: query, recommendedCount: recommendations?.length || 0 }
+      });
+      
+      // Cevap oluşturma işlemini tamamla
+      return {
+        response: responseText,
+        songs: recommendations,
+        relatedMoods,
+        categoryFilters,
+        playableResults: hasPlayableResults // YouTube entegrasyonu ile ilgili bilgi
+      };
+    } catch (error: any) {
+      console.error("Sorgu işleme hatası:", error);
+      
+      // Hata durumunda basit bir yanıt döndür
+      if (!query || !userId) {
+        return {
+          response: "Geçersiz sorgu veya kullanıcı ID'si. Lütfen tekrar deneyin.",
+          relatedMoods: [],
+          playableResults: false
+        };
+      } else {
+        return {
+          response: `Sorgunuzu işlerken bir sorun oluştu: ${error?.message || 'Bilinmeyen hata'}. Lütfen tekrar deneyin.`,
+          relatedMoods: [],
+          playableResults: false
+        };
+      }
+    }
+  }
+
+    /**
+   * Kullanıcı etkileşimlerini kaydeder
+   * @param userId Kullanıcı ID'si 
+   * @param interaction Etkileşim bilgisi
+   */
+  private async logUserInteraction(userId: string, interaction: UserInteraction): Promise<void> {
+    try {
+      // Kullanıcı etkileşimlerini kaydetmek için bir veritabanı işlemi yapılabilir
+      // Şu anda sadece konsola yazdırıyoruz
+      console.log(`User interaction logged: ${userId}`, interaction);
+      
+      try {
+        // Kullanıcı profilini güncelleme işlemi burada yapılabilir
+        const userProfile = await this.getUserProfile(userId);
+        if (userProfile) {
+          // Profili güncelle ve kaydet
+          await this.saveUserProfile(userProfile);
+        }
+      } catch (profileError: any) {
+        // Profil işlemi sırasında hata olduysa sessizce devam et
+        console.warn(`Could not update user profile for ${userId}:`, profileError);
+      }
+    } catch (error: any) {
+      console.error(`Error logging user interaction for user ${userId}:`, error);
+      // Etkileşim kaydı sırasındaki hatalar kritik değildir, sessizce devam ediyoruz
+    }
+  }
+
+  /**
+   * Kullanıcının haftalık müzik özetini oluşturur
+   * @param userId Kullanıcı ID'si
+   * @returns Haftalık özet bilgileri (en çok dinlenen sanatçılar, türler, baskın ruh hali ve önerilen şarkılar)
+   */
+  async generateWeeklySummary(userId: string): Promise<WeeklySummary> {
+    try {
+      // Kullanıcı profilini getir
+      const userProfile = await this.getUserProfile(userId);
+      
+      // Son bir haftalık dinleme verilerini analiz et
+      // UserProfile'dan dinleme geçmişini al veya boş dizi kullan
+      let listeningHistory: any[] = [];
+      
+      // Eğer kullanıcı profilinde getListeningHistory metodu varsa kullan
+      if (userProfile && typeof userProfile.getListeningHistory === 'function') {
+        try {
+          listeningHistory = await userProfile.getListeningHistory() || [];
+        } catch (e) {
+          console.error('Dinleme geçmişi alınamadı:', e);
+          // Devam et, boş liste kullan
+        }
+      }
+      
+      // Dinleme geçmişini tarih filtresine göre filtrele
+      const now = new Date();
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      
+      const lastWeekListening = listeningHistory.filter((item: any) => {
+        return new Date(item.timestamp) >= oneWeekAgo;
+      });
+      
+      // En çok dinlenen sanatçıları, türleri ve ruh hallerini sayacak nesneler
+      const artistCounts: Record<string, number> = {};
+      const genreCounts: Record<string, number> = {};
+      const moodCounts: Record<string, number> = {};
+      
+      // Dinleme geçmişinden sanatçı ve türleri topla
+      for (const item of lastWeekListening) {
+        try {
+          // Eğer şarkı detayları zaten varsa kullan, yoksa getir
+          let songDetails: any = item.songDetails;
+          
+          if (!songDetails && item.songId && this.musicAnalyzer) {
+            songDetails = await this.musicAnalyzer.getSongDetails(item.songId);
+          }
+          
+          if (songDetails) {
+            // Sanatçı sayacını artır
+            if (songDetails.artist) {
+              artistCounts[songDetails.artist] = (artistCounts[songDetails.artist] || 0) + 1;
+            }
+            
+            // Tür sayacını artır
+            if (songDetails.genre && Array.isArray(songDetails.genre)) {
+              for (const genre of songDetails.genre) {
+                if (typeof genre === 'string') {
+                  genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+                }
+              }
+            }
+            
+            // Ruh hali sayacını artır
+            if (songDetails.mood && Array.isArray(songDetails.mood)) {
+              for (const mood of songDetails.mood) {
+                if (typeof mood === 'string') {
+                  moodCounts[mood] = (moodCounts[mood] || 0) + 1;
+                }
+              }
+            }
+          }
+        } catch (songError) {
+          console.error('Şarkı detayları işlenirken hata:', songError);
+          // Tek bir şarkı hatası için tüm işlemi kırma, devam et
+          continue;
+        }
+      }
+      
+      // En çok dinlenen sanatçıları bul
+      const topArtists = Object.entries(artistCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(entry => entry[0]);
+      
+      // En çok dinlenen türleri bul
+      const topGenres = Object.entries(genreCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(entry => entry[0]);
+      
+      // Dominant ruh halini bul veya varsayılan kullan
+      const dominantMood = Object.entries(moodCounts).length > 0 ?
+        Object.entries(moodCounts)
+          .sort((a, b) => b[1] - a[1])[0][0] : 
+        (userProfile.preferences?.favoriteMoods?.[0] || 'mutlu');
+      
+      // Eğer dinleme geçmişi boşsa, kullanıcı tercihlerinden al
+      if (topArtists.length === 0 && userProfile.preferences?.favoriteArtists) {
+        topArtists.push(...(userProfile.preferences.favoriteArtists.slice(0, 3)));
+      }
+      
+      // Hala boşsa varsayılan değerler ekle
+      if (topArtists.length === 0) {
+        topArtists.push('Sanatçı A', 'Sanatçı B', 'Sanatçı C');
+      }
+      
+      // Tür için de benzer şekilde
+      if (topGenres.length === 0 && userProfile.preferences?.favoriteGenres) {
+        topGenres.push(...(userProfile.preferences.favoriteGenres.slice(0, 3)));
+      }
+      
+      if (topGenres.length === 0) {
+        topGenres.push('Pop', 'Rock', 'Jazz');
+      }
+      
+      // Kullanıcı için özel öneriler oluştur
+      const recommendationParams: any = {
+        userId, 
+        seedGenres: topGenres,
+        targetMoods: [dominantMood],
+        limit: 5,
+        noveltyFactor: 0.7 // %70 yenilik faktörü ile benzer ama yeni şarkılar öner
+      };
+      
+      // Önerileri al
+      let recommendedSongs: Song[] = [];
+      try {
+        recommendedSongs = await this.recommender.getRecommendations(userId, recommendationParams) || [];
+      } catch (recError) {
+        console.error('Öneri getirme hatası:', recError);
+        // Hata oluştu, varsayılan öneriler oluşturacağız
+      }
+      
+      // Eğer öneriler boşsa, varsayılan şarkılar döndür
+      if (!recommendedSongs || recommendedSongs.length === 0) {
+        recommendedSongs = [
+          {
+            id: 'song1',
+            title: 'Haftalık Öneri 1',
+            artist: 'Sanatçı X',
+            album: 'Albüm A',
+            imageUrl: 'https://picsum.photos/200',
+            genre: ['pop'],
+            mood: ['mutlu'],
+            createdAt: new Date(),
+            updatedAt: new Date()
+          },
+          {
+            id: 'song2',
+            title: 'Haftalık Öneri 2',
+            artist: 'Sanatçı Y',
+            album: 'Albüm B',
+            imageUrl: 'https://picsum.photos/200',
+            genre: ['rock'],
+            mood: ['enerjik'],
+            createdAt: new Date(),
+            updatedAt: new Date()
+          },
+          {
+            id: 'song3',
+            title: 'Haftalık Öneri 3',
+            artist: 'Sanatçı Z',
+            album: 'Albüm C',
+            imageUrl: 'https://picsum.photos/200',
+            genre: ['jazz'],
+            mood: ['sakin'],
+            createdAt: new Date(),
+            updatedAt: new Date()
+          },
+          {
+            id: 'song4',
+            title: 'Haftalık Öneri 4',
+            artist: 'Sanatçı A',
+            album: 'Albüm D',
+            imageUrl: 'https://picsum.photos/200',
+            genre: ['classical'],
+            mood: ['rahatlatıcı'],
+            createdAt: new Date(),
+            updatedAt: new Date()
+          },
+          {
+            id: 'song5',
+            title: 'Haftalık Öneri 5',
+            artist: 'Sanatçı B',
+            album: 'Albüm E',
+            imageUrl: 'https://picsum.photos/200',
+            genre: ['electronic'],
+            mood: ['heyecanlı'],
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }
+        ];
+      }
+      
+      // Sonuçları döndür
+      return {
+        topArtists,
+        topGenres,
+        dominantMood,
+        recommendedSongs
+      };
+    } catch (error) {
+      console.error(`Error generating weekly summary for user ${userId}:`, error);
+      // Hata durumunda varsayılan değerler döndür, böylece uygulama kırılmaz
+      return {
+        topArtists: ['Sanatçı A', 'Sanatçı B', 'Sanatçı C'],
+        topGenres: ['Pop', 'Rock', 'Jazz'],
+        dominantMood: 'mutlu',
+        recommendedSongs: [
+          {
+            id: 'error-song',
+            title: 'Öneri Oluşturulamadı',
+            artist: 'Sistem',
+            album: 'Hata Durumu',
+            imageUrl: 'https://picsum.photos/200',
+            genre: ['pop'],
+            mood: ['neutral'],
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }
+        ]
+      };
+    }
+  }
+}
+
+/**
+ * Haftalık özet dönüş tipi
+ */
+export interface WeeklySummary {
+  topArtists: string[];
+  topGenres: string[];
+  dominantMood: string;
+  recommendedSongs: Song[];
+}
+
+/**
+ * Kullanıcı davranış verisi arayüzü - bir şarkı dinleme eylemi sırasında toplanan veri
+ */
+// Müzik asistanı için kullanıcı etkileşim tipi
+export interface UserInteraction {
+  type: 'play' | 'search' | 'like' | 'dislike' | 'skip' | 'complete' | 'recommend' | 'query';
+  songId?: string;
+  songDetails?: Song;
+  timestamp: number | Date; // Hem sayı hem de Date objesi olabilir
+  query?: string;
+  duration?: number;
+  successful?: boolean;
+  feedback?: string;
+  rating?: number; // 1-5 arası değerlendirme
+  addedToPlaylist?: boolean;
+  sharedWithOthers?: boolean;
+  details?: Record<string, any>; // Esnek ilave detaylar 
+  explicitFeedback?: {
+    type?: string;
+    value?: string;
+  };
+}
+
+/**
+ * Öğrenme sonuçları arayüzü - kullanıcıların davranışlarından elde edilen öğrenme sonucu
+ */
+export interface LearningResult {
+  genre?: Record<string, number>;
+  mood?: Record<string, number>;
+  artists?: Record<string, number>;
+  features?: Record<string, number>;
+  lyrics?: Record<string, number>;
+  instruments?: Record<string, number>;
+  eras?: Record<string, number>;
+  listening_patterns?: {
+    time_of_day?: Record<string, number>; // Günün hangi saatlerinde dinliyor
+    day_of_week?: Record<string, number>; // Haftanın hangi günleri dinliyor
+    duration?: Record<string, number>;    // Dinleme süreleri (kısa/uzun)
+    repeat_behavior?: Record<string, number>; // Tekrar dinleme davranışı
+  };
+}
+
+// Yapay zeka motorunu oluşturmak için yardımcı fonksiyon
+let aiInstance: EnhancedMusicAI | null = null;
+
+export function getEnhancedMusicAI(): EnhancedMusicAI {
+  if (!aiInstance) {
+    aiInstance = new EnhancedMusicAI();
+  }
+  return aiInstance;
+}
+

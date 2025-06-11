@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* MelodyAI CSS Variables (Dark theme is default in :root, .light for light theme) */
+:root {
+  --background: 240 10% 3%; /* #0a0a0f */
+  --foreground: 210 40% 98%; /* #fafafa */
+  --muted: 240 12% 8%; /* #131318 */
+  --muted-foreground: 215 20.2% 65.1%; /* #9ca3af */
+  --popover: 240 10% 3%; /* #0a0a0f */
+  --popover-foreground: 210 40% 98%; /* #fafafa */
+  --card: 240 15% 6%; /* #0f0f18 */
+  --card-foreground: 210 40% 98%; /* #fafafa */
+  --border: 240 12% 15%; /* #1a1a25 */
+  --input: 240 12% 12%; /* #1a1a20 */
+  --primary: 270 100% 70%; /* #8b5cf6 - Purple */
+  --primary-foreground: 240 10% 3%; /* #0a0a0f */
+  --secondary: 190 100% 60%; /* #06b6d4 - Cyan */
+  --secondary-foreground: 240 10% 3%; /* #0a0a0f */
+  --accent: 45 100% 65%; /* #f59e0b - Amber */
+  --accent-foreground: 240 10% 3%; /* #0a0a0f */
+  --destructive: 0 84.2% 60.2%; /* #ef4444 */
+  --destructive-foreground: 60 9.1% 97.8%; /* #fefefe */
+  --ring: 270 100% 70%; /* #8b5cf6 */
+  --radius: 0.75rem;
+  
+  --sidebar-background: 222 84% 4%; /* #0f0f0f */
+  --sidebar-foreground: 210 40% 98%; /* #fafafa */
+  --sidebar-primary: 207 90% 54%; /* #1DB954 */
+  --sidebar-primary-foreground: 211 100% 99%; /* #ffffff */
+  --sidebar-accent: 217 33% 17%; /* #1f2937 */
+  --sidebar-accent-foreground: 210 40% 98%; /* #fafafa */
+  --sidebar-border: 217 33% 17%; /* #1f2937 */
+  --sidebar-ring: 207 90% 54%; /* #1DB954 */
+  
+  --chart-1: 12 76% 61%; /* #e88c30 */
+  --chart-2: 173 58% 39%; /* #2dd4bf */
+  --chart-3: 197 37% 24%; /* #3b82f6 */
+  --chart-4: 43 74% 66%; /* #f59e0b */
+  --chart-5: 27 87% 67%; /* #ef4444 */
+}
+
+.light { /* MelodyAI uses .light for light theme */
+  --background: 0 0% 100%; /* #ffffff */
+  --foreground: 222 84% 4%; /* #0f0f0f */
+  --muted: 210 40% 96%; /* #f1f5f9 */
+  --muted-foreground: 215 16% 47%; /* #64748b */
+  --popover: 0 0% 100%; /* #ffffff */
+  --popover-foreground: 222 84% 4%; /* #0f0f0f */
+  --card: 0 0% 100%; /* #ffffff */
+  --card-foreground: 222 84% 4%; /* #0f0f0f */
+  --border: 214 32% 91%; /* #e2e8f0 */
+  --input: 214 32% 91%; /* #e2e8f0 */
+  --primary: 207 90% 54%; /* #1DB954 */
+  --primary-foreground: 211 100% 99%; /* #ffffff */
+  --secondary: 210 40% 96%; /* #f1f5f9 */
+  --secondary-foreground: 222 84% 4%; /* #0f0f0f */
+  --accent: 210 40% 96%; /* #f1f5f9 */
+  --accent-foreground: 222 84% 4%; /* #0f0f0f */
+  --destructive: 0 84.2% 60.2%; /* #ef4444 */
+  --destructive-foreground: 60 9.1% 97.8%; /* #fefefe */
+  --ring: 207 90% 54%; /* #1DB954 */
+  
+  --sidebar-background: 0 0% 98%; /* #fafafa */
+  --sidebar-foreground: 222 84% 4%; /* #0f0f0f */
+  --sidebar-primary: 207 90% 54%; /* #1DB954 */
+  --sidebar-primary-foreground: 211 100% 99%; /* #ffffff */
+  --sidebar-accent: 210 40% 96%; /* #f1f5f9 */
+  --sidebar-accent-foreground: 222 84% 4%; /* #0f0f0f */
+  --sidebar-border: 214 32% 91%; /* #e2e8f0 */
+  --sidebar-ring: 207 90% 54%; /* #1DB954 */
+}
+
+/* MelodyAI Base Styles */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* MelodyAI Utility Classes */
+@layer utilities {
+  .glass-effect {
+    backdrop-filter: blur(20px);
+    background: rgba(15, 15, 24, 0.7);
+    border: 1px solid rgba(255, 0, 255, 0.2);
+  }
+  
+  .neon-glow {
+    box-shadow: 0 0 20px hsl(var(--primary)), 0 0 40px hsl(var(--primary)), 0 0 60px hsl(var(--primary));
+    animation: neonPulse 3s ease-in-out infinite alternate;
+  }
+  
+  .cyber-border {
+    border: 2px solid transparent;
+    background: linear-gradient(var(--card), var(--card)) padding-box,
+                linear-gradient(45deg, hsl(var(--primary)), hsl(var(--secondary)), hsl(var(--accent))) border-box;
+  }
+  
+  .hologram-effect {
+    background: linear-gradient(45deg, 
+      hsl(var(--primary) / 0.1), 
+      hsl(var(--secondary) / 0.1),
+      hsl(var(--accent) / 0.1),
+      hsl(var(--primary) / 0.1));
+    background-size: 400% 400%;
+    animation: holoShift 6s ease-in-out infinite;
+  }
+  
+  .audio-visualizer {
+    background: linear-gradient(90deg, 
+      hsl(var(--primary)), 
+      hsl(var(--secondary)), 
+      hsl(var(--accent)),
+      hsl(var(--primary)));
+    background-size: 200% 100%;
+    animation: audioWave 2s linear infinite;
+  }
+  
+  .floating-particle {
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  .text-glow {
+    text-shadow: 0 0 10px hsl(var(--primary)), 0 0 20px hsl(var(--primary)), 0 0 30px hsl(var(--primary));
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+  
+  .animate-pulse-soft {
+    animation: pulseSoft 2s infinite;
+  }
+}
+
+/* MelodyAI Keyframes */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes pulseSoft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes neonPulse {
+  0% { box-shadow: 0 0 20px hsl(var(--primary)), 0 0 40px hsl(var(--primary)), 0 0 60px hsl(var(--primary)); }
+  100% { box-shadow: 0 0 30px hsl(var(--primary)), 0 0 60px hsl(var(--primary)), 0 0 90px hsl(var(--primary)); }
+}
+
+@keyframes holoShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes audioWave {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes float { /* Added for .floating-particle */
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+/* User's Existing Custom Animations & Styles (Preserved) */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Kaydırma Çubuğu Stilleri */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--secondary)); /* This will now use MelodyAI's --secondary */
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3); /* This will now use MelodyAI's --muted-foreground */
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5); /* This will now use MelodyAI's --muted-foreground */
+}

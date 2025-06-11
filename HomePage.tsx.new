@@ -1,0 +1,601 @@
+import React, { useState, useEffect } from 'react';
+import { Link, useLocation } from 'wouter';
+import Layout from '@/components/Layout';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
+import { 
+  Music, 
+  Search, 
+  Headphones, 
+  TrendingUp, 
+  Heart, 
+  ArrowRight,
+  User,
+  Play,
+  LogIn,
+  LogOut,
+  Disc,
+  ListMusic
+} from 'lucide-react';
+import { AVAILABLE_MOODS } from '@/lib/constants';
+import type { Song } from '@shared/schema';
+
+// Spotify API entegrasyonu için importlar
+import { useSpotifyAuth } from '@/lib/spotify/auth';
+import { getRecommendations, getFeaturedPlaylists, getNewReleases, getTopTracks } from '@/lib/spotify/api';
+
+export default function HomePage() {
+  const [_, navigate] = useLocation();
+  const [selectedMood, setSelectedMood] = useState<string>(AVAILABLE_MOODS[0]);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [trendingTracks, setTrendingTracks] = useState<any[]>([]);
+  const [newReleases, setNewReleases] = useState<any[]>([]);
+  const [featuredPlaylists, setFeaturedPlaylists] = useState<any[]>([]);
+  const [moodSongs, setMoodSongs] = useState<any[]>([]);
+
+  // Spotify Auth Context'ten değişkenleri al
+  const { 
+    isAuthenticated, 
+    accessToken,
+    userPlaylists, 
+    loading: authLoading, 
+    error,
+    login, 
+    logout,
+    user
+  } = useSpotifyAuth();
+  
+  // Sayfa başlığı
+  document.title = 'Müzik Asistanım - Kişiselleştirilmiş Müzik Önerileri';
+
+  // API verilerini yükle
+  useEffect(() => {
+    const fetchData = async () => {
+      if (accessToken) {
+        setLoading(true);
+        try {
+          // Trend şarkıları getir
+          const topTracks = await getTopTracks(accessToken);
+          setTrendingTracks(topTracks.slice(0, 10));
+          
+          // Yeni çıkanları getir
+          const releases = await getNewReleases(accessToken);
+          setNewReleases(releases.slice(0, 10));
+          
+          // Öne çıkan çalma listelerini getir
+          const playlists = await getFeaturedPlaylists(accessToken);
+          setFeaturedPlaylists(playlists.slice(0, 6));
+          
+          // Mood bazlı önerileri getir
+          await fetchMoodRecommendations();
+        } catch (error) {
+          console.error('API veri çekme hatası:', error);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    
+    fetchData();
+  }, [accessToken]);
+  
+  // Ruh hali değiştiğinde önerileri yenile
+  useEffect(() => {
+    if (accessToken) {
+      fetchMoodRecommendations();
+    }
+  }, [selectedMood, accessToken]);
+  
+  // Ruh haline göre önerileri getir
+  const fetchMoodRecommendations = async () => {
+    if (!accessToken) return;
+    
+    try {
+      const recommendations = await getRecommendations(accessToken, {
+        seed_genres: selectedMood.toLowerCase(),
+        limit: 10
+      });
+      
+      setMoodSongs(recommendations);
+    } catch (error) {
+      console.error('Mood önerileri getirme hatası:', error);
+    }
+  };
+
+  // Arama işlemi
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
+
+  // Şarkı çalma fonksiyonu
+  const playSong = (songUri: string) => {
+    if (accessToken) {
+      // Spotify API ile şarkı çalma
+      console.log('Şarkı çalınıyor:', songUri);
+      // Burada Spotify Web Playback SDK kullanılabilir
+    } else {
+      // Giriş yapılmamışsa login olmaları için yönlendir
+      login();
+    }
+  };
+
+  return (
+    <Layout>
+      <div className="w-full px-4 pt-8 pb-24 md:px-8">
+        {/* Spotify Login/Logout Button */}
+        <div className="flex justify-end mb-4">
+          {isAuthenticated ? (
+            <Button onClick={logout} variant="outline" size="sm">
+              <LogOut className="mr-2 h-4 w-4" />
+              Spotify'dan Çıkış Yap
+            </Button>
+          ) : (
+            <Button onClick={login} variant="outline" size="sm">
+              <LogIn className="mr-2 h-4 w-4" />
+              Spotify ile Giriş Yap
+            </Button>
+          )}
+        </div>
+
+        {/* Ana Hero Bölümü */}
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col space-y-4 py-8">
+            {/* Hero İçerik */}
+            <div className="text-center space-y-4">
+              <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
+                Müzik Asistanım
+              </h1>
+              <p className="max-w-2xl mx-auto text-lg text-muted-foreground">
+                Kişiselleştirilmiş öneriler, sanatçı bilgileri ve müzik keşfi için AI destekli asistanınız.
+              </p>
+            </div>
+
+            <div className="flex justify-center">
+              <div className="mt-6 w-full max-w-md">
+                <form onSubmit={handleSearch} className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="Şarkı veya sanatçı ara..."
+                    className="pl-8 rounded-full bg-background"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </form>
+              </div>
+            </div>
+          </div>
+
+          {/* Ana Sekmeler */}
+          <Tabs defaultValue="moods" className="w-full mt-6">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="moods">Ruh Halleri</TabsTrigger>
+              <TabsTrigger value="trending">Trendler</TabsTrigger>
+              <TabsTrigger value="new-releases">Yeni Çıkanlar</TabsTrigger>
+              <TabsTrigger value="playlists">Çalma Listeleri</TabsTrigger>
+            </TabsList>
+            
+            {/* Ruh Halleri Sekmesi */}
+            <TabsContent value="moods" className="pt-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                {AVAILABLE_MOODS.map((mood) => (
+                  <Button
+                    key={mood}
+                    variant={selectedMood === mood ? "default" : "outline"}
+                    className="h-auto py-6 flex flex-col justify-center items-center gap-2 capitalize"
+                    onClick={() => setSelectedMood(mood)}
+                  >
+                    <Headphones className="h-6 w-6" />
+                    <span>{mood}</span>
+                  </Button>
+                ))}
+              </div>
+              
+              {/* Ruh haline göre önerilen şarkılar */}
+              {selectedMood && (
+                <div className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>
+                        <div className="flex items-center">
+                          <Headphones className="mr-2 h-5 w-5" />
+                          {selectedMood} Ruh Haline Göre Öneriler
+                        </div>
+                      </CardTitle>
+                      <CardDescription>
+                        Bu ruh haline uygun müzik önerileri
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {loading ? (
+                        <div className="space-y-3">
+                          {Array(5).fill(0).map((_, i) => (
+                            <div key={i} className="flex items-center gap-3 p-2">
+                              <Skeleton className="h-10 w-10 rounded" />
+                              <div className="space-y-1 flex-1">
+                                <Skeleton className="h-4 w-full" />
+                                <Skeleton className="h-3 w-3/4" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : moodSongs.length > 0 ? (
+                        <div className="space-y-2">
+                          {moodSongs.map((song) => (
+                            <div 
+                              key={song.id} 
+                              className="flex items-center gap-3 p-2 rounded-md hover:bg-accent cursor-pointer transition-colors"
+                              onClick={() => navigate(`/song/${song.id}`)}
+                            >
+                              <div className="flex-shrink-0 h-10 w-10 rounded overflow-hidden bg-muted">
+                                {song.album?.images?.[0] ? (
+                                  <img 
+                                    src={song.album.images[0].url} 
+                                    alt={song.name}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <Music className="h-full w-full p-2 text-muted-foreground" />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-sm truncate">{song.name}</p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {song.artists?.map((a: any) => a.name).join(', ')}
+                                </p>
+                              </div>
+                              <Button 
+                                size="icon" 
+                                variant="ghost"
+                                className="h-8 w-8 flex-shrink-0 text-primary"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  playSong(song.uri);
+                                }}
+                              >
+                                <Play className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-10 text-muted-foreground">
+                          <Music className="mx-auto h-8 w-8 mb-2 opacity-50" />
+                          <p>Bu ruh hali için henüz öneri bulunmuyor</p>
+                          {!isAuthenticated && (
+                            <Button onClick={login} size="sm" className="mt-4">
+                              <LogIn className="mr-2 h-4 w-4" />
+                              Spotify ile Giriş Yap
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Trendler Sekmesi */}
+            <TabsContent value="trending" className="pt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <TrendingUp className="mr-2 h-5 w-5" />
+                    Haftalık Trend Şarkılar
+                  </CardTitle>
+                  <CardDescription>
+                    Bu hafta en çok dinlenen popüler şarkılar
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="space-y-3">
+                      {Array(5).fill(0).map((_, i) => (
+                        <div key={i} className="flex items-center gap-3 p-2">
+                          <Skeleton className="h-10 w-10 rounded" />
+                          <div className="space-y-1 flex-1">
+                            <Skeleton className="h-4 w-full" />
+                            <Skeleton className="h-3 w-3/4" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : trendingTracks.length > 0 ? (
+                    <div className="space-y-2">
+                      {trendingTracks.map((track) => (
+                        <div 
+                          key={track.id} 
+                          className="flex items-center gap-3 p-2 rounded-md hover:bg-accent cursor-pointer transition-colors"
+                          onClick={() => navigate(`/song/${track.id}`)}
+                        >
+                          <div className="flex-shrink-0 h-10 w-10 rounded overflow-hidden bg-muted">
+                            {track.album?.images?.[0] ? (
+                              <img 
+                                src={track.album.images[0].url} 
+                                alt={track.name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <Music className="h-full w-full p-2 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-sm truncate">{track.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {track.artists?.map((a: any) => a.name).join(', ')}
+                            </p>
+                          </div>
+                          <Button 
+                            size="icon" 
+                            variant="ghost"
+                            className="h-8 w-8 flex-shrink-0 text-primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              playSong(track.uri);
+                            }}
+                          >
+                            <Play className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-10 text-muted-foreground">
+                      <TrendingUp className="mx-auto h-8 w-8 mb-2 opacity-50" />
+                      <p>Trend şarkılar yüklenemedi</p>
+                      {!isAuthenticated && (
+                        <Button onClick={login} size="sm" className="mt-4">
+                          <LogIn className="mr-2 h-4 w-4" />
+                          Spotify ile Giriş Yap
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Yeni Çıkanlar Sekmesi */}
+            <TabsContent value="new-releases" className="pt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Disc className="mr-2 h-5 w-5" />
+                    Yeni Çıkan Albümler
+                  </CardTitle>
+                  <CardDescription>
+                    Son çıkan albüm ve single'lar
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {Array(8).fill(0).map((_, i) => (
+                        <div key={i} className="space-y-2">
+                          <Skeleton className="aspect-square rounded-md" />
+                          <Skeleton className="h-4 w-full" />
+                          <Skeleton className="h-3 w-3/4" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : newReleases.length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {newReleases.map((album) => (
+                        <Card 
+                          key={album.id}
+                          className="overflow-hidden hover:bg-accent transition-colors cursor-pointer border-0 shadow-none"
+                          onClick={() => navigate(`/album/${album.id}`)}
+                        >
+                          <div className="aspect-square bg-muted relative overflow-hidden rounded-md">
+                            {album.images?.[0] ? (
+                              <img 
+                                src={album.images[0].url} 
+                                alt={album.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Music className="h-12 w-12 text-muted-foreground opacity-20" />
+                              </div>
+                            )}
+                            <Button 
+                              size="icon" 
+                              className="absolute bottom-2 right-2 rounded-full h-8 w-8 bg-primary text-primary-foreground shadow-lg"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                playSong(album.uri);
+                              }}
+                            >
+                              <Play className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <CardContent className="p-2 pt-3">
+                            <div className="font-medium text-sm truncate">{album.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {album.artists?.map((a: any) => a.name).join(', ')}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-10 text-muted-foreground">
+                      <Disc className="mx-auto h-8 w-8 mb-2 opacity-50" />
+                      <p>Yeni çıkan albümler yüklenemedi</p>
+                      {!isAuthenticated && (
+                        <Button onClick={login} size="sm" className="mt-4">
+                          <LogIn className="mr-2 h-4 w-4" />
+                          Spotify ile Giriş Yap
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Çalma Listeleri Sekmesi */}
+            <TabsContent value="playlists" className="pt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <ListMusic className="mr-2 h-5 w-5" />
+                    Çalma Listeleri
+                  </CardTitle>
+                  <CardDescription>
+                    {isAuthenticated 
+                      ? 'Kendi çalma listeleriniz ve öne çıkan listeler' 
+                      : 'Öne çıkan çalma listeleri'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Tabs defaultValue="featured" className="w-full">
+                    <TabsList className="mb-4">
+                      {isAuthenticated && <TabsTrigger value="user">Kişisel Listelerim</TabsTrigger>}
+                      <TabsTrigger value="featured">Öne Çıkanlar</TabsTrigger>
+                    </TabsList>
+
+                    {isAuthenticated && (
+                      <TabsContent value="user">
+                        {loading || authLoading ? (
+                          <div className="space-y-3">
+                            {Array(5).fill(0).map((_, i) => (
+                              <div key={i} className="flex items-center gap-3 p-2">
+                                <Skeleton className="h-10 w-10 rounded" />
+                                <div className="space-y-1 flex-1">
+                                  <Skeleton className="h-4 w-full" />
+                                  <Skeleton className="h-3 w-3/4" />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : userPlaylists.length > 0 ? (
+                          <div className="space-y-2">
+                            {userPlaylists.map((playlist) => (
+                              <div 
+                                key={playlist.id}
+                                className="flex items-center gap-3 p-2 rounded-md hover:bg-accent cursor-pointer transition-colors"
+                                onClick={() => navigate(`/playlist/${playlist.id}`)}
+                              >
+                                <div className="flex-shrink-0 h-10 w-10 rounded overflow-hidden bg-muted">
+                                  {playlist.images?.[0] ? (
+                                    <img 
+                                      src={playlist.images[0].url} 
+                                      alt={playlist.name}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <ListMusic className="h-full w-full p-2 text-muted-foreground" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-sm truncate">{playlist.name}</p>
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {playlist.tracks?.total || 0} şarkı
+                                  </p>
+                                </div>
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost"
+                                  className="h-8 w-8 flex-shrink-0 text-primary"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/playlist/${playlist.id}`);
+                                  }}
+                                >
+                                  <Play className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-10 text-muted-foreground">
+                            <ListMusic className="mx-auto h-8 w-8 mb-2 opacity-50" />
+                            <p>Henüz çalma listeniz bulunmuyor</p>
+                          </div>
+                        )}
+                      </TabsContent>
+                    )}
+
+                    <TabsContent value="featured">
+                      {loading ? (
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          {Array(6).fill(0).map((_, i) => (
+                            <div key={i} className="space-y-2">
+                              <Skeleton className="aspect-square rounded-md" />
+                              <Skeleton className="h-4 w-full" />
+                              <Skeleton className="h-3 w-3/4" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : featuredPlaylists.length > 0 ? (
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          {featuredPlaylists.map((playlist) => (
+                            <Card 
+                              key={playlist.id}
+                              className="overflow-hidden hover:bg-accent transition-colors cursor-pointer border-0 shadow-none"
+                              onClick={() => navigate(`/playlist/${playlist.id}`)}
+                            >
+                              <div className="aspect-square bg-muted relative overflow-hidden rounded-md">
+                                {playlist.images?.[0] ? (
+                                  <img 
+                                    src={playlist.images[0].url} 
+                                    alt={playlist.name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <ListMusic className="h-12 w-12 text-muted-foreground opacity-20" />
+                                  </div>
+                                )}
+                                <Button 
+                                  size="icon" 
+                                  className="absolute bottom-2 right-2 rounded-full h-8 w-8 bg-primary text-primary-foreground shadow-lg"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/playlist/${playlist.id}`);
+                                  }}
+                                >
+                                  <Play className="h-4 w-4" />
+                                </Button>
+                              </div>
+                              <CardContent className="p-2 pt-3">
+                                <div className="font-medium text-sm truncate">{playlist.name}</div>
+                                <div className="text-xs text-muted-foreground truncate">
+                                  {playlist.description || 'Spotify çalma listesi'}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-10 text-muted-foreground">
+                          <ListMusic className="mx-auto h-8 w-8 mb-2 opacity-50" />
+                          <p>Öne çıkan çalma listeleri yüklenemedi</p>
+                          {!isAuthenticated && (
+                            <Button onClick={login} size="sm" className="mt-4">
+                              <LogIn className="mr-2 h-4 w-4" />
+                              Spotify ile Giriş Yap
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+    </Layout>
+  );
+}
