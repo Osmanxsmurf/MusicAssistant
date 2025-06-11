@@ -1,0 +1,274 @@
+import React, { useState } from 'react';
+import { Link, useLocation } from 'wouter';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { 
+  Home, 
+  Music, 
+  Search, 
+  User, 
+  Headphones, 
+  Heart, 
+  Settings, 
+  LogOut, 
+  Menu,
+  X,
+  Sparkles
+} from 'lucide-react';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { MusicPlayerProvider } from '@/contexts/music-player-context';
+import { Toaster } from '@/components/ui/toaster';
+
+interface LayoutProps {
+  children: React.ReactNode;
+}
+
+export default function Layout({ children }: LayoutProps) {
+  const [location] = useLocation();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Navigasyon menüsü
+  const navItems = [
+    { 
+      name: 'Ana Sayfa', 
+      href: '/', 
+      icon: <Home className="h-5 w-5" /> 
+    },
+    { 
+      name: 'Keşfet', 
+      href: '/discover', 
+      icon: <Search className="h-5 w-5" /> 
+    },
+    { 
+      name: 'Sanatçılar', 
+      href: '/artist', 
+      icon: <User className="h-5 w-5" /> 
+    },
+    { 
+      name: 'Şarkılar', 
+      href: '/songs', 
+      icon: <Music className="h-5 w-5" /> 
+    },
+    { 
+      name: 'AI Asistan', 
+      href: '/ai', 
+      icon: <Sparkles className="h-5 w-5" /> 
+    }
+  ];
+  
+  // Aktif menü öğesini kontrol et
+  const isActiveLink = (href: string) => {
+    if (href === '/') {
+      return location === '/';
+    }
+    return location.startsWith(href);
+  };
+  
+  return (
+    <MusicPlayerProvider>
+      <div className="min-h-screen flex flex-col">
+        {/* Header */}
+        <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <div className="container flex h-16 items-center justify-between px-4">
+            {/* Logo */}
+            <Link href="/" className="flex items-center gap-2">
+              <Headphones className="h-6 w-6 text-primary" />
+              <span className="font-bold text-xl hidden sm:inline-block">Müzik Asistanım</span>
+            </Link>
+            
+            {/* Masaüstü Navigasyon */}
+            <nav className="hidden md:flex items-center gap-6">
+              {navItems.map((item) => (
+                <Link 
+                  key={item.href} 
+                  href={item.href}
+                  className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                    isActiveLink(item.href) 
+                      ? 'text-primary' 
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  {item.icon}
+                  {item.name}
+                </Link>
+              ))}
+            </nav>
+            
+            {/* Kullanıcı Menüsü */}
+            <div className="flex items-center gap-4">
+              {/* Arama Butonu */}
+              <Link href="/search">
+                <Button variant="ghost" size="icon" className="hidden sm:flex">
+                  <Search className="h-5 w-5" />
+                </Button>
+              </Link>
+              
+              {/* Favoriler */}
+              <Link href="/favorites">
+                <Button variant="ghost" size="icon" className="hidden sm:flex">
+                  <Heart className="h-5 w-5" />
+                </Button>
+              </Link>
+              
+              {/* Kullanıcı Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src="/avatar.png" alt="Kullanıcı" />
+                      <AvatarFallback>U</AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Hesabım</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile" className="cursor-pointer w-full">
+                      <User className="mr-2 h-4 w-4" />
+                      <span>Profil</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/favorites" className="cursor-pointer w-full">
+                      <Heart className="mr-2 h-4 w-4" />
+                      <span>Favorilerim</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings" className="cursor-pointer w-full">
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Ayarlar</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Çıkış Yap</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Mobil Menü */}
+              <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" className="md:hidden">
+                    <Menu className="h-6 w-6" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-[300px] sm:w-[400px]">
+                  <div className="flex flex-col h-full">
+                    <div className="flex items-center justify-between py-4">
+                      <Link 
+                        href="/" 
+                        className="flex items-center gap-2"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <Headphones className="h-6 w-6 text-primary" />
+                        <span className="font-bold text-xl">Müzik Asistanım</span>
+                      </Link>
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <X className="h-5 w-5" />
+                      </Button>
+                    </div>
+                    
+                    <div className="flex items-center gap-4 px-2 py-4">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src="/avatar.png" alt="Kullanıcı" />
+                        <AvatarFallback>U</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium">Kullanıcı</p>
+                        <p className="text-xs text-muted-foreground">user@example.com</p>
+                      </div>
+                    </div>
+                    
+                    <nav className="flex flex-col gap-1 px-2">
+                      {navItems.map((item) => (
+                        <Link 
+                          key={item.href} 
+                          href={item.href}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent ${
+                            isActiveLink(item.href) 
+                              ? 'bg-accent text-accent-foreground' 
+                              : 'text-muted-foreground'
+                          }`}
+                        >
+                          {item.icon}
+                          {item.name}
+                        </Link>
+                      ))}
+                    </nav>
+                    
+                    <div className="mt-auto px-2 py-4">
+                      <Link 
+                        href="/settings"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent"
+                      >
+                        <Settings className="h-5 w-5" />
+                        Ayarlar
+                      </Link>
+                      <div className="flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent cursor-pointer">
+                        <LogOut className="h-5 w-5" />
+                        Çıkış Yap
+                      </div>
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </div>
+          </div>
+        </header>
+        
+        {/* Ana İçerik */}
+        <main className="flex-1 py-6">
+          {children}
+        </main>
+        
+        {/* Footer */}
+        <footer className="border-t py-6 md:py-0">
+          <div className="container px-4 flex flex-col md:flex-row justify-between items-center gap-4 md:h-16">
+            <div className="flex items-center gap-2">
+              <Headphones className="h-5 w-5 text-primary" />
+              <p className="text-sm text-muted-foreground">
+                &copy; {new Date().getFullYear()} Müzik Asistanım
+              </p>
+            </div>
+            
+            <nav className="flex items-center gap-4 text-sm text-muted-foreground">
+              <Link href="/about" className="hover:text-primary transition-colors">
+                Hakkında
+              </Link>
+              <Link href="/privacy" className="hover:text-primary transition-colors">
+                Gizlilik
+              </Link>
+              <Link href="/terms" className="hover:text-primary transition-colors">
+                Kullanım Şartları
+              </Link>
+              <Link href="/contact" className="hover:text-primary transition-colors">
+                İletişim
+              </Link>
+            </nav>
+          </div>
+        </footer>
+        
+        {/* Toast bildirimleri için */}
+        <Toaster />
+      </div>
+    </MusicPlayerProvider>
+  );
+}
