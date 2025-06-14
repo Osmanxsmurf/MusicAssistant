@@ -3,7 +3,7 @@
  * Bu modül, Last.fm API ile iletişim kurmak için gerekli fonksiyonları içerir.
  */
 // Last.fm API anahtarı
-const LASTFM_API_KEY = import.meta.env.VITE_LASTFM_API_KEY || 'ed0f28ee6e2da02b1796c1bce3d85535';
+const LASTFM_API_KEY = import.meta.env.VITE_LASTFM_API_KEY || '';
 const LASTFM_API_URL = 'https://ws.audioscrobbler.com/2.0/';
 
 /**
